@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp } from "firebase/app";
 import { getDatabase, ref, onValue } from "firebase/database";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Activity, Zap, ShieldAlert, Cpu, Settings, Sun, Moon, X } from 'lucide-react';
+import { Activity, Zap, ShieldAlert, Cpu, Settings, Sun, Moon, X, ChevronDown } from 'lucide-react';
 import bgImage from './smartgrid.jpeg';
 
 const firebaseConfig = {
@@ -15,6 +15,40 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
+
+const FadeInSection = ({ children, delay = 0, className = '' }) => {
+  const [isVisible, setVisible] = React.useState(false);
+  const domRef = React.useRef();
+
+  React.useEffect(() => {
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          setVisible(true);
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.1 });
+
+    const { current } = domRef;
+    if (current) observer.observe(current);
+
+    return () => {
+      if (current) observer.unobserve(current);
+    };
+  }, []);
+
+  return (
+    <div
+      ref={domRef}
+      className={`transition-all duration-1000 ease-out transform ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-12'
+        } ${className}`}
+      style={{ transitionDelay: `${delay}ms` }}
+    >
+      {children}
+    </div>
+  );
+};
 
 const App = () => {
   const [data, setData] = useState({ voltage: 0, current: 0, power: 0, energy: 0, pf: 0, frequency: 0 });
@@ -124,7 +158,7 @@ const App = () => {
   };
 
   return (
-    <div className={`min-h-screen p-6 md:p-12 font-sans flex flex-col items-center justify-center relative overflow-hidden transition-colors duration-500 ${theme.bgApp}`}>
+    <div className={`min-h-screen font-sans flex flex-col relative overflow-x-hidden transition-colors duration-500 ${theme.bgApp}`}>
 
       {/* Background with parallax/overlay */}
       <div
@@ -146,186 +180,220 @@ const App = () => {
         }}
       />
 
+      {/* Hero / Landing Section */}
+      <div className="w-full min-h-screen flex flex-col items-center justify-center relative z-20 text-center px-6">
+        <FadeInSection delay={100}>
+          <div className="p-5 bg-blue-500/10 rounded-2xl border border-blue-500/30 shadow-[0_0_30px_rgba(59,130,246,0.3)] mb-8 inline-block backdrop-blur-md">
+            <Zap className="text-blue-400 w-16 h-16" />
+          </div>
+        </FadeInSection>
+        <FadeInSection delay={300}>
+          <h1 className={`text-6xl md:text-8xl font-serif font-bold tracking-tight mb-6 bg-clip-text text-transparent bg-gradient-to-r ${isDarkMode ? 'from-white via-blue-200 to-cyan-200' : 'from-slate-900 via-blue-700 to-cyan-600'} drop-shadow-lg`}>
+            AC Energy Meter
+          </h1>
+        </FadeInSection>
+        <FadeInSection delay={500}>
+          <p className={`text-xl md:text-2xl max-w-3xl font-light leading-relaxed ${isDarkMode ? 'text-gray-300' : 'text-slate-600'} mb-12`}>
+            A comprehensive IoT project capable of real-time monitoring, threshold alerts, and detailed amplitude analysis of electrical networks. Empowering smarter energy consumption.
+          </p>
+        </FadeInSection>
+
+        {/* Scroll indicator */}
+        <FadeInSection delay={800}>
+          <div className="flex flex-col items-center animate-bounce mt-12 text-blue-400/80">
+            <ChevronDown size={32} />
+          </div>
+        </FadeInSection>
+      </div>
+
       {/* Main Content Container */}
-      <div className="w-full max-w-6xl z-10 space-y-8 animate-fade-in-up">
+      <div className="w-full max-w-6xl z-10 space-y-12 pb-24 px-6 md:px-12 mx-auto">
 
         {/* Header Glass Panel */}
-        <div className={`${theme.glassPanel} backdrop-blur-md p-6 flex flex-col md:flex-row justify-between items-center md:items-end rounded-2xl transition-colors duration-500`}>
-          <div className="flex items-center space-x-4 mb-4 md:mb-0">
-            <div className="p-3 bg-blue-500/10 rounded-xl border border-blue-500/30 shadow-[0_0_15px_rgba(59,130,246,0.3)]">
-              <Cpu className="text-blue-400 w-8 h-8" />
+        <FadeInSection delay={100}>
+          <div className={`${theme.glassPanel} backdrop-blur-md p-6 flex flex-col md:flex-row justify-between items-center md:items-end rounded-2xl transition-colors duration-500`}>
+            <div className="flex items-center space-x-4 mb-4 md:mb-0">
+              <div className="p-3 bg-blue-500/10 rounded-xl border border-blue-500/30 shadow-[0_0_15px_rgba(59,130,246,0.3)]">
+                <Cpu className="text-blue-400 w-8 h-8" />
+              </div>
+              <div>
+                <h1 className={`text-4xl md:text-5xl font-serif font-light tracking-[0.2em] bg-clip-text text-transparent bg-gradient-to-r ${isDarkMode ? 'from-blue-300 to-cyan-200' : 'from-blue-600 to-cyan-500'} drop-shadow-sm`}>
+                  SMARTGRID
+                </h1>
+                <p className={`text-[10px] font-sans uppercase tracking-[0.3em] mt-2 ${isDarkMode ? 'text-blue-200/60' : 'text-blue-800/60'}`}>
+                  Advanced Power Monitoring System
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className={`text-4xl md:text-5xl font-serif font-light tracking-[0.2em] bg-clip-text text-transparent bg-gradient-to-r ${isDarkMode ? 'from-blue-300 to-cyan-200' : 'from-blue-600 to-cyan-500'} drop-shadow-sm`}>
-                SMARTGRID
-              </h1>
-              <p className={`text-[10px] font-sans uppercase tracking-[0.3em] mt-2 ${isDarkMode ? 'text-blue-200/60' : 'text-blue-800/60'}`}>
-                Advanced Power Monitoring System
-              </p>
-            </div>
-          </div>
 
-          <div className="flex flex-col items-end">
-            <div className="flex items-center space-x-4 mb-4">
-              <button onClick={() => setIsDarkMode(!isDarkMode)} className={`p-2 rounded-lg transition-colors ${theme.bgHover} ${theme.textStrong}`}>
-                {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
-              </button>
-              <button onClick={() => { setTempLimit(limit); setIsSettingsOpen(true); }} className={`p-2 rounded-lg transition-colors ${theme.bgHover} ${theme.textStrong}`}>
-                <Settings size={18} />
-              </button>
+            <div className="flex flex-col items-end">
+              <div className="flex items-center space-x-4 mb-4">
+                <button onClick={() => setIsDarkMode(!isDarkMode)} className={`p-2 rounded-lg transition-colors ${theme.bgHover} ${theme.textStrong}`}>
+                  {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
+                </button>
+                <button onClick={() => { setTempLimit(limit); setIsSettingsOpen(true); }} className={`p-2 rounded-lg transition-colors ${theme.bgHover} ${theme.textStrong}`}>
+                  <Settings size={18} />
+                </button>
+              </div>
+              <div className="flex items-center space-x-2 mb-2">
+                <div className={`w-2 h-2 rounded-full animate-pulse ${isHigh ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]' : 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]'}`}></div>
+                <span className={`text-xs font-mono uppercase ${theme.textMuted}`}>Live Connection</span>
+              </div>
+              <span className={`text-xs font-serif tracking-widest px-4 py-2 rounded-lg border backdrop-blur-sm transition-all duration-300 shadow-lg ${getStatusColor()}`}>
+                SYSTEM STATUS: {isHigh ? 'CRITICAL LOAD DETECTED' : 'OPERATIONAL & STABLE'}
+              </span>
             </div>
-            <div className="flex items-center space-x-2 mb-2">
-              <div className={`w-2 h-2 rounded-full animate-pulse ${isHigh ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]' : 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]'}`}></div>
-              <span className={`text-xs font-mono uppercase ${theme.textMuted}`}>Live Connection</span>
-            </div>
-            <span className={`text-xs font-serif tracking-widest px-4 py-2 rounded-lg border backdrop-blur-sm transition-all duration-300 shadow-lg ${getStatusColor()}`}>
-              SYSTEM STATUS: {isHigh ? 'CRITICAL LOAD DETECTED' : 'OPERATIONAL & STABLE'}
-            </span>
           </div>
-        </div>
+        </FadeInSection>
 
         {/* Grid Blocks */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 group/grid">
-          {[
-            { id: 'voltage', label: 'Voltage', value: data.voltage, unit: 'V', icon: <Zap size={20} />, color: 'from-blue-500/20 to-blue-600/5', border: 'border-blue-500/30', text: isDarkMode ? 'text-blue-200' : 'text-slate-900' },
-            { id: 'current', label: 'Current', value: data.current, unit: 'A', icon: <Activity size={20} />, color: 'from-cyan-500/20 to-cyan-600/5', border: 'border-cyan-500/30', text: isDarkMode ? 'text-cyan-200' : 'text-slate-900' },
-            { id: 'power', label: 'Power', value: data.power, unit: 'W', icon: <Zap size={20} />, color: isHigh ? 'from-red-500/20 to-orange-600/5' : 'from-indigo-500/20 to-indigo-600/5', border: isHigh ? 'border-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.3)]' : 'border-indigo-500/30', text: isHigh ? (isDarkMode ? 'text-red-300' : 'text-slate-900') : (isDarkMode ? 'text-indigo-200' : 'text-slate-900') },
-            { id: 'energy', label: 'Energy', value: data.energy, unit: 'Wh', icon: <ShieldAlert size={20} />, color: 'from-purple-500/20 to-purple-600/5', border: 'border-purple-500/30', text: isDarkMode ? 'text-purple-200' : 'text-slate-900' },
-            { id: 'pf', label: 'Power Factor', value: data.pf, unit: '', icon: <Activity size={20} />, color: 'from-emerald-500/20 to-emerald-600/5', border: 'border-emerald-500/30', text: isDarkMode ? 'text-emerald-200' : 'text-slate-900' },
-            { id: 'frequency', label: 'Frequency', value: data.frequency, unit: 'Hz', icon: <Activity size={20} />, color: 'from-yellow-500/20 to-yellow-600/5', border: 'border-yellow-500/30', text: isDarkMode ? 'text-yellow-200' : 'text-slate-900' }
-          ].map((item, idx) => (
-            <div
-              key={idx}
-              onClick={() => setActiveBlock(activeBlock === item.id ? null : item.id)}
-              className={`data-block relative overflow-hidden rounded-3xl border ${item.border} p-6 bg-gradient-to-br ${item.color} ${isDarkMode ? 'backdrop-blur-xl' : 'backdrop-blur-md bg-white/40 shadow-sm'} group/card transition-all duration-500 hover:-translate-y-2 hover:shadow-[0_15px_40px_-10px_rgba(59,130,246,0.4)] hover:border-blue-400/50 cursor-pointer group-hover/grid:opacity-[0.85] hover:!opacity-100`}
-            >
-              <div className={`absolute inset-0 bg-gradient-to-tr ${isDarkMode ? 'from-white/5' : 'from-black/5'} to-transparent opacity-0 group-hover/card:opacity-100 transition-opacity duration-500`}></div>
-              <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-blue-400/60 to-transparent opacity-0 group-hover/card:opacity-100 transition-opacity duration-500"></div>
+        <FadeInSection delay={200}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 group/grid">
+            {[
+              { id: 'voltage', label: 'Voltage', value: data.voltage, unit: 'V', icon: <Zap size={20} />, color: 'from-blue-500/20 to-blue-600/5', border: 'border-blue-500/30', text: isDarkMode ? 'text-blue-200' : 'text-slate-900' },
+              { id: 'current', label: 'Current', value: data.current, unit: 'A', icon: <Activity size={20} />, color: 'from-cyan-500/20 to-cyan-600/5', border: 'border-cyan-500/30', text: isDarkMode ? 'text-cyan-200' : 'text-slate-900' },
+              { id: 'power', label: 'Power', value: data.power, unit: 'W', icon: <Zap size={20} />, color: isHigh ? 'from-red-500/20 to-orange-600/5' : 'from-indigo-500/20 to-indigo-600/5', border: isHigh ? 'border-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.3)]' : 'border-indigo-500/30', text: isHigh ? (isDarkMode ? 'text-red-300' : 'text-slate-900') : (isDarkMode ? 'text-indigo-200' : 'text-slate-900') },
+              { id: 'energy', label: 'Energy', value: data.energy, unit: 'Wh', icon: <ShieldAlert size={20} />, color: 'from-purple-500/20 to-purple-600/5', border: 'border-purple-500/30', text: isDarkMode ? 'text-purple-200' : 'text-slate-900' },
+              { id: 'pf', label: 'Power Factor', value: data.pf, unit: '', icon: <Activity size={20} />, color: 'from-emerald-500/20 to-emerald-600/5', border: 'border-emerald-500/30', text: isDarkMode ? 'text-emerald-200' : 'text-slate-900' },
+              { id: 'frequency', label: 'Frequency', value: data.frequency, unit: 'Hz', icon: <Activity size={20} />, color: 'from-yellow-500/20 to-yellow-600/5', border: 'border-yellow-500/30', text: isDarkMode ? 'text-yellow-200' : 'text-slate-900' }
+            ].map((item, idx) => (
+              <div
+                key={idx}
+                onClick={() => setActiveBlock(activeBlock === item.id ? null : item.id)}
+                className={`data-block relative overflow-hidden rounded-3xl border ${item.border} p-6 bg-gradient-to-br ${item.color} ${isDarkMode ? 'backdrop-blur-xl' : 'backdrop-blur-md bg-white/40 shadow-sm'} group/card transition-all duration-500 hover:-translate-y-2 hover:shadow-[0_15px_40px_-10px_rgba(59,130,246,0.4)] hover:border-blue-400/50 cursor-pointer group-hover/grid:opacity-[0.85] hover:!opacity-100`}
+              >
+                <div className={`absolute inset-0 bg-gradient-to-tr ${isDarkMode ? 'from-white/5' : 'from-black/5'} to-transparent opacity-0 group-hover/card:opacity-100 transition-opacity duration-500`}></div>
+                <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-blue-400/60 to-transparent opacity-0 group-hover/card:opacity-100 transition-opacity duration-500"></div>
 
-              <div className="flex justify-between items-start mb-6 relative z-10">
-                <span className={`text-[11px] font-bold tracking-[0.2em] uppercase transition-colors ${theme.textMuted} group-hover/card:${theme.textStrong}`}>{item.label}</span>
-                <div className={`p-2 rounded-xl ${isDarkMode ? 'bg-black/20 text-white/70' : 'bg-black/5 text-slate-800'} group-hover/card:${item.text} transition-all duration-500 group-hover/card:scale-110 group-hover/card:bg-white/5 group-hover/card:shadow-[0_0_15px_rgba(59,130,246,0.2)] border border-white/5`}>
-                  {item.icon}
-                </div>
-              </div>
-
-              <div className="relative z-10 flex items-baseline">
-                <span className={`text-5xl font-serif font-light tracking-wider drop-shadow-sm ${theme.textStrong}`}>
-                  {item.value}
-                </span>
-                <span className={`text-sm tracking-widest ml-2 font-medium ${item.text} opacity-80`}>
-                  {item.unit}
-                </span>
-              </div>
-
-              {/* Expandable History Section */}
-              <div className={`transition-all duration-500 ease-in-out relative z-10 overflow-hidden ${activeBlock === item.id ? 'max-h-40 mt-6 opacity-100' : 'max-h-0 opacity-0'}`}>
-                <div className={`border-t ${theme.borderMuted} pt-4`}>
-                  <p className={`text-[10px] uppercase tracking-widest mb-2 font-bold ${theme.textMuted}`}>Recent History</p>
-                  <div className="space-y-1">
-                    {metricHistory[item.id]?.map((hist, i) => (
-                      <div key={i} className={`flex justify-between text-xs items-center p-1 rounded ${theme.bgHover} transition-colors`}>
-                        <span className={`font-mono text-[10px] ${theme.textMuted}`}>{hist.time}</span>
-                        <span className={`font-semibold ${theme.textStrong}`}>{hist.value} <span className="text-[10px] opacity-70">{item.unit}</span></span>
-                      </div>
-                    ))}
-                    {(!metricHistory[item.id] || metricHistory[item.id].length === 0) && (
-                      <div className={`text-xs italic ${theme.textMuted}`}>Waiting for data...</div>
-                    )}
+                <div className="flex justify-between items-start mb-6 relative z-10">
+                  <span className={`text-[11px] font-bold tracking-[0.2em] uppercase transition-colors ${theme.textMuted} group-hover/card:${theme.textStrong}`}>{item.label}</span>
+                  <div className={`p-2 rounded-xl ${isDarkMode ? 'bg-black/20 text-white/70' : 'bg-black/5 text-slate-800'} group-hover/card:${item.text} transition-all duration-500 group-hover/card:scale-110 group-hover/card:bg-white/5 group-hover/card:shadow-[0_0_15px_rgba(59,130,246,0.2)] border border-white/5`}>
+                    {item.icon}
                   </div>
                 </div>
-              </div>
 
-            </div>
-          ))}
-        </div>
+                <div className="relative z-10 flex items-baseline">
+                  <span className={`text-5xl font-serif font-light tracking-wider drop-shadow-sm ${theme.textStrong}`}>
+                    {item.value}
+                  </span>
+                  <span className={`text-sm tracking-widest ml-2 font-medium ${item.text} opacity-80`}>
+                    {item.unit}
+                  </span>
+                </div>
+
+                {/* Expandable History Section */}
+                <div className={`transition-all duration-500 ease-in-out relative z-10 overflow-hidden ${activeBlock === item.id ? 'max-h-40 mt-6 opacity-100' : 'max-h-0 opacity-0'}`}>
+                  <div className={`border-t ${theme.borderMuted} pt-4`}>
+                    <p className={`text-[10px] uppercase tracking-widest mb-2 font-bold ${theme.textMuted}`}>Recent History</p>
+                    <div className="space-y-1">
+                      {metricHistory[item.id]?.map((hist, i) => (
+                        <div key={i} className={`flex justify-between text-xs items-center p-1 rounded ${theme.bgHover} transition-colors`}>
+                          <span className={`font-mono text-[10px] ${theme.textMuted}`}>{hist.time}</span>
+                          <span className={`font-semibold ${theme.textStrong}`}>{hist.value} <span className="text-[10px] opacity-70">{item.unit}</span></span>
+                        </div>
+                      ))}
+                      {(!metricHistory[item.id] || metricHistory[item.id].length === 0) && (
+                        <div className={`text-xs italic ${theme.textMuted}`}>Waiting for data...</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            ))}
+          </div>
+        </FadeInSection>
 
         {/* Dynamic Consumption Bar */}
-        <div className={`${theme.glassPanel} p-6 rounded-2xl backdrop-blur-md relative overflow-hidden transition-colors duration-500`}>
-          <div className="absolute -right-20 -top-20 w-40 h-40 bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <FadeInSection delay={200}>
+          <div className={`${theme.glassPanel} p-6 rounded-2xl backdrop-blur-md relative overflow-hidden transition-colors duration-500`}>
+            <div className="absolute -right-20 -top-20 w-40 h-40 bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
 
-          <div className="flex justify-between items-end mb-4">
-            <div>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-blue-300">Network Load Indicator</h3>
-              <p className="text-[10px] text-gray-400 mt-1 uppercase tracking-wider">Capacity: {limit}W</p>
+            <div className="flex justify-between items-end mb-4">
+              <div>
+                <h3 className="text-xs font-bold uppercase tracking-widest text-blue-300">Network Load Indicator</h3>
+                <p className="text-[10px] text-gray-400 mt-1 uppercase tracking-wider">Capacity: {limit}W</p>
+              </div>
+              <div className="text-right">
+                <span className={`text-xl font-light ${theme.textStrong}`}>{((data.power / limit) * 100).toFixed(1)}%</span>
+                <span className={`text-[10px] ml-1 uppercase ${theme.textMuted}`}>Allocated</span>
+              </div>
             </div>
-            <div className="text-right">
-              <span className={`text-xl font-light ${theme.textStrong}`}>{((data.power / limit) * 100).toFixed(1)}%</span>
-              <span className={`text-[10px] ml-1 uppercase ${theme.textMuted}`}>Allocated</span>
+
+            <div className="w-full h-4 bg-black/40 rounded-full border border-white/10 overflow-hidden relative shadow-inner">
+              <div
+                className={`h-full rounded-full transition-all duration-700 ease-out relative ${isHigh ? 'bg-gradient-to-r from-orange-500 to-red-600 shadow-[0_0_15px_rgba(239,68,68,0.8)]' : 'bg-gradient-to-r from-cyan-400 to-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.6)]'}`}
+                style={{ width: `${powerPercent}%` }}
+              >
+                {/* Animated shimmer effect on the bar */}
+                <div className="absolute top-0 inset-x-0 h-full bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full animate-[shimmer_2s_infinite]"></div>
+              </div>
             </div>
           </div>
-
-          <div className="w-full h-4 bg-black/40 rounded-full border border-white/10 overflow-hidden relative shadow-inner">
-            <div
-              className={`h-full rounded-full transition-all duration-700 ease-out relative ${isHigh ? 'bg-gradient-to-r from-orange-500 to-red-600 shadow-[0_0_15px_rgba(239,68,68,0.8)]' : 'bg-gradient-to-r from-cyan-400 to-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.6)]'}`}
-              style={{ width: `${powerPercent}%` }}
-            >
-              {/* Animated shimmer effect on the bar */}
-              <div className="absolute top-0 inset-x-0 h-full bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full animate-[shimmer_2s_infinite]"></div>
-            </div>
-          </div>
-        </div>
+        </FadeInSection>
 
         {/* Advanced Graph Section */}
-        <div ref={graphRef} className={`${theme.glassPanel} p-6 rounded-2xl backdrop-blur-md relative transition-colors duration-500`}>
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 space-y-4 md:space-y-0">
-            <h3 className={`text-xs font-bold uppercase tracking-widest flex items-center ${isDarkMode ? 'text-blue-300' : 'text-blue-600'}`}>
-              <Activity size={14} className="mr-2" />
-              Telemetry Amplitude Analysis
-            </h3>
+        <FadeInSection delay={300}>
+          <div ref={graphRef} className={`${theme.glassPanel} p-6 rounded-2xl backdrop-blur-md relative transition-colors duration-500`}>
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 space-y-4 md:space-y-0">
+              <h3 className={`text-xs font-bold uppercase tracking-widest flex items-center ${isDarkMode ? 'text-blue-300' : 'text-blue-600'}`}>
+                <Activity size={14} className="mr-2" />
+                Telemetry Amplitude Analysis
+              </h3>
 
-            {/* Chart Metric Toggles */}
-            <div className={`flex flex-wrap gap-1 p-1 rounded-lg ${isDarkMode ? 'bg-black/30' : 'bg-slate-200/50'}`}>
-              {['power', 'voltage', 'current', 'energy', 'pf', 'frequency'].map((metric) => (
-                <button
-                  key={metric}
-                  onClick={() => setActiveChartMetric(metric)}
-                  className={`px-3 py-1 text-[10px] font-bold uppercase tracking-widest rounded-md transition-all ${activeChartMetric === metric ? (isDarkMode ? 'bg-blue-500/20 text-blue-300' : 'bg-blue-500/20 text-blue-700') : (isDarkMode ? 'text-gray-500 hover:text-gray-300' : 'text-slate-500 hover:text-slate-700')}`}
-                >
-                  {metric}
-                </button>
-              ))}
+              {/* Chart Metric Toggles */}
+              <div className={`flex flex-wrap gap-1 p-1 rounded-lg ${isDarkMode ? 'bg-black/30' : 'bg-slate-200/50'}`}>
+                {['power', 'voltage', 'current', 'energy', 'pf', 'frequency'].map((metric) => (
+                  <button
+                    key={metric}
+                    onClick={() => setActiveChartMetric(metric)}
+                    className={`px-3 py-1 text-[10px] font-bold uppercase tracking-widest rounded-md transition-all ${activeChartMetric === metric ? (isDarkMode ? 'bg-blue-500/20 text-blue-300' : 'bg-blue-500/20 text-blue-700') : (isDarkMode ? 'text-gray-500 hover:text-gray-300' : 'text-slate-500 hover:text-slate-700')}`}
+                  >
+                    {metric}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="h-[320px] w-full mt-4">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={history} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="colorMetric" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor={getChartColor(activeChartMetric)} stopOpacity={0.6} />
+                      <stop offset="95%" stopColor={getChartColor(activeChartMetric)} stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDarkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)"} />
+                  <XAxis dataKey="time" fontSize={11} tickMargin={12} stroke={isDarkMode ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.3)"} tick={{ fill: isDarkMode ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)' }} />
+                  <YAxis fontSize={11} stroke={isDarkMode ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.3)"} tick={{ fill: isDarkMode ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)' }} domain={['auto', 'auto']} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: isDarkMode ? 'rgba(15, 23, 42, 0.8)' : 'rgba(255, 255, 255, 0.9)',
+                      color: isDarkMode ? 'white' : '#1e293b',
+                      border: isDarkMode ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.1)',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                      backdropFilter: 'blur(8px)',
+                      boxShadow: '0 4px 15px rgba(0,0,0,0.1)'
+                    }}
+                    itemStyle={{ color: getChartColor(activeChartMetric), fontWeight: 'bold' }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey={activeChartMetric}
+                    stroke={getChartColor(activeChartMetric)}
+                    strokeWidth={3}
+                    fillOpacity={1}
+                    fill="url(#colorMetric)"
+                    animationDuration={300}
+                    activeDot={{ r: 6, fill: getChartColor(activeChartMetric), stroke: isDarkMode ? '#fff' : '#020617', strokeWidth: 2 }}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
             </div>
           </div>
-
-          <div className="h-[320px] w-full mt-4">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={history} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorMetric" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={getChartColor(activeChartMetric)} stopOpacity={0.6} />
-                    <stop offset="95%" stopColor={getChartColor(activeChartMetric)} stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDarkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)"} />
-                <XAxis dataKey="time" fontSize={11} tickMargin={12} stroke={isDarkMode ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.3)"} tick={{ fill: isDarkMode ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)' }} />
-                <YAxis fontSize={11} stroke={isDarkMode ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.3)"} tick={{ fill: isDarkMode ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)' }} domain={['auto', 'auto']} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: isDarkMode ? 'rgba(15, 23, 42, 0.8)' : 'rgba(255, 255, 255, 0.9)',
-                    color: isDarkMode ? 'white' : '#1e293b',
-                    border: isDarkMode ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.1)',
-                    borderRadius: '8px',
-                    fontSize: '12px',
-                    backdropFilter: 'blur(8px)',
-                    boxShadow: '0 4px 15px rgba(0,0,0,0.1)'
-                  }}
-                  itemStyle={{ color: getChartColor(activeChartMetric), fontWeight: 'bold' }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey={activeChartMetric}
-                  stroke={getChartColor(activeChartMetric)}
-                  strokeWidth={3}
-                  fillOpacity={1}
-                  fill="url(#colorMetric)"
-                  animationDuration={300}
-                  activeDot={{ r: 6, fill: getChartColor(activeChartMetric), stroke: isDarkMode ? '#fff' : '#020617', strokeWidth: 2 }}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
+        </FadeInSection>
 
       </div>
 
