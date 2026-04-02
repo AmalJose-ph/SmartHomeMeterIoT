@@ -1,19 +1,25 @@
 import './index.css';
 import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp } from "firebase/app";
+import { getAnalytics } from "firebase/analytics";
 import { getDatabase, ref, onValue } from "firebase/database";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Activity, Zap, ShieldAlert, Cpu, Settings, Sun, Moon, X, ChevronDown } from 'lucide-react';
 import bgImage from './smartgrid.jpeg';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyA6Omw5YVek98Ohdsr-609ZAYNmB_BvvDg",
-  authDomain: "smart-meter-86162.firebaseapp.com",
-  databaseURL: "https://smart-meter-86162-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "smart-meter-86162",
+  apiKey: "AIzaSyD8og6QQ29h8JNTaqqrRjnhs0Ez7KiAw4I",
+  authDomain: "loadforecasting-cdb12.firebaseapp.com",
+  databaseURL: "https://loadforecasting-cdb12-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "loadforecasting-cdb12",
+  storageBucket: "loadforecasting-cdb12.firebasestorage.app",
+  messagingSenderId: "138676239833",
+  appId: "1:138676239833:web:ba78438203c1d28a6a2dc8",
+  measurementId: "G-33LV4DR363"
 };
 
 const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
 const db = getDatabase(app);
 
 const FadeInSection = ({ children, delay = 0, className = '' }) => {
@@ -95,6 +101,7 @@ const App = () => {
 
     const unsubscribe = onValue(dataRef, (snapshot) => {
       const val = snapshot.val();
+      console.log("Firebase snapshot received:", val);
       if (val) {
         setData(val);
         const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -119,6 +126,8 @@ const App = () => {
           frequency: [...(prev.frequency || []).slice(-4), { time: timeStr, value: val.frequency || 0 }]
         }));
       }
+    }, (error) => {
+      console.error("Firebase subscription error:", error);
     });
 
     // Add a subtle glow pulse to the background periodically
