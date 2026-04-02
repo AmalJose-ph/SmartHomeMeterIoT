@@ -1,6 +1,6 @@
-# Getting Started with Create React App
+# Smart AC Energy Meter (IoT)
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Datas from PZEM-004T is collected by the ESP32DevKit and sent to Firebase from it is fetched to this project. Complete working pipeline of an IoT based system.
 
 ## Available Scripts
 
