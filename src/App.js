@@ -1,26 +1,129 @@
 import './index.css';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { initializeApp } from "firebase/app";
 import { getAnalytics } from "firebase/analytics";
 import { getDatabase, ref, onValue } from "firebase/database";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { Activity, Zap, ShieldAlert, Cpu, Settings, Sun, Moon, X, ChevronDown } from 'lucide-react';
 import bgImage from './smartgrid.jpeg';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyD8og6QQ29h8JNTaqqrRjnhs0Ez7KiAw4I",
-  authDomain: "loadforecasting-cdb12.firebaseapp.com",
-  databaseURL: "https://loadforecasting-cdb12-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "loadforecasting-cdb12",
-  storageBucket: "loadforecasting-cdb12.firebasestorage.app",
-  messagingSenderId: "138676239833",
-  appId: "1:138676239833:web:ba78438203c1d28a6a2dc8",
-  measurementId: "G-33LV4DR363"
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
+  authDomain: "smart-meter-86162.firebaseapp.com",
+  databaseURL: "https://smart-meter-86162-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "smart-meter-86162",
+  storageBucket: "smart-meter-86162.firebasestorage.app",
+  ...(process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID && {
+    messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
+  }),
+  ...(process.env.REACT_APP_FIREBASE_APP_ID && {
+    appId: process.env.REACT_APP_FIREBASE_APP_ID,
+  }),
+  ...(process.env.REACT_APP_FIREBASE_MEASUREMENT_ID && {
+    measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID,
+  }),
 };
 
 const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
+if (typeof window !== 'undefined' && firebaseConfig.measurementId) {
+  try {
+    getAnalytics(app);
+  } catch {
+    /* analytics optional */
+  }
+}
 const db = getDatabase(app);
+
+const METRIC_KEYS = ['voltage', 'current', 'power', 'energy', 'pf', 'frequency'];
+
+/** RTDB often uses "load" for forecast power (W) instead of "power". */
+const POWER_FROM_LOAD_KEYS = [
+  'load', 'Load', 'LOAD',
+  'predicted_load', 'pred_load', 'load_pred', 'loadPred',
+  'predictedLoad', 'PredictedLoad', 'forecast_load', 'forecastLoad',
+  'next_load', 'nextLoad', 'Forecast_Load',
+  'forecast_power', 'ForecastPower',
+];
+
+const num = (v) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+function powerPredictionMissing(out) {
+  return out.power == null || !Number.isFinite(Number(out.power));
+}
+
+/** If `power` is still empty, copy from load-style keys on `source`. */
+function assignPowerFromLoadAliases(out, source) {
+  if (!source || typeof source !== 'object' || !powerPredictionMissing(out)) return out;
+  for (const key of POWER_FROM_LOAD_KEYS) {
+    const v = num(source[key]);
+    if (v !== null) {
+      out.power = v;
+      break;
+    }
+  }
+  return out;
+}
+
+/** Reads prediction fields from RTDB payload (nested object or per-metric keys). */
+function parsePredictionsFromSnapshot(val) {
+  if (!val || typeof val !== 'object') return {};
+  const nested =
+    val.prediction ||
+    val.predictions ||
+    val.Prediction ||
+    val.predicted ||
+    val.forecast;
+  const out = {};
+  if (nested && typeof nested === 'object') {
+    METRIC_KEYS.forEach((k) => {
+      const v = num(nested[k]);
+      if (v !== null) out[k] = v;
+    });
+    assignPowerFromLoadAliases(out, nested);
+    assignPowerFromLoadAliases(out, val);
+    return out;
+  }
+  METRIC_KEYS.forEach((k) => {
+    const candidates = [
+      val[`pred_${k}`],
+      val[`${k}_pred`],
+      val[`${k}Pred`],
+      val[`predicted_${k}`],
+      val[`predicted${k.charAt(0).toUpperCase()}${k.slice(1)}`],
+      val[`prediction_${k}`],
+    ];
+    for (const c of candidates) {
+      const v = num(c);
+      if (v !== null) {
+        out[k] = v;
+        break;
+      }
+    }
+  });
+  assignPowerFromLoadAliases(out, val);
+  return out;
+}
+
+/** DigitalTwin_Forecast root: same shapes as parsePredictionsFromSnapshot, or plain metric keys (voltage, power, …). */
+function parseDigitalTwinForecast(val) {
+  if (val != null && typeof val !== 'object') {
+    const v = num(val);
+    return v !== null ? { power: v } : {};
+  }
+  if (!val || typeof val !== 'object') return {};
+  const structured = parsePredictionsFromSnapshot(val);
+  const out = { ...structured };
+  METRIC_KEYS.forEach((k) => {
+    if (out[k] != null && Number.isFinite(Number(out[k]))) return;
+    const v = num(val[k]);
+    if (v !== null) out[k] = v;
+  });
+  assignPowerFromLoadAliases(out, val);
+  return out;
+}
 
 const FadeInSection = ({ children, delay = 0, className = '' }) => {
   const [isVisible, setVisible] = React.useState(false);
@@ -58,6 +161,7 @@ const FadeInSection = ({ children, delay = 0, className = '' }) => {
 
 const App = () => {
   const [data, setData] = useState({ voltage: 0, current: 0, power: 0, energy: 0, pf: 0, frequency: 0 });
+  const [predictions, setPredictions] = useState({});
   const [history, setHistory] = useState([]);
   const [metricHistory, setMetricHistory] = useState({ voltage: [], current: [], power: [], energy: [], pf: [], frequency: [] });
   const [activeBlock, setActiveBlock] = useState(null);
@@ -65,11 +169,30 @@ const App = () => {
   const [isGraphVisible, setIsGraphVisible] = useState(false);
   const graphRef = useRef(null);
 
+  const [dtHistory, setDtHistory] = useState([]);
+  const [dtForecast, setDtForecast] = useState({ actual_P: 0, next_P: 0, next_V: 0, next_I: 0, next_F: 0, next_PF: 0 });
+
+  const getForecastData = (id) => {
+    switch (id) {
+      case 'power': return { pred: dtForecast.next_P, actual: dtForecast.actual_P || data.power };
+      case 'voltage': return { pred: dtForecast.next_V, actual: data.voltage };
+      case 'current': return { pred: dtForecast.next_I, actual: data.current };
+      case 'frequency': return { pred: dtForecast.next_F, actual: data.frequency };
+      case 'pf': return { pred: dtForecast.next_PF, actual: data.pf };
+      case 'energy': return { pred: predictions.energy, actual: data.energy };
+      default: return { pred: predictions[id], actual: data[id] };
+    }
+  };
+
   const [limit, setLimit] = useState(2000); // Configurable threshold
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [tempLimit, setTempLimit] = useState(2000);
   const [activeChartMetric, setActiveChartMetric] = useState('power');
   const [isDarkMode, setIsDarkMode] = useState(true);
+
+  const latestLiveRef = useRef({ voltage: 0, current: 0, power: 0, energy: 0, pf: 0, frequency: 0 });
+  const livePredsRef = useRef({});
+  const forecastPredsRef = useRef({});
 
   // Theme configuration
   const theme = {
@@ -80,6 +203,7 @@ const App = () => {
     textMuted: isDarkMode ? 'text-gray-400' : 'text-slate-500',
     textStrong: isDarkMode ? 'text-white' : 'text-slate-900',
     bgHover: isDarkMode ? 'hover:bg-white/10' : 'hover:bg-black/5',
+    borderMuted: isDarkMode ? 'border-white/10' : 'border-slate-200',
   };
 
   useEffect(() => {
@@ -97,37 +221,128 @@ const App = () => {
     };
     window.addEventListener('mousemove', handleMouseMove);
 
-    const dataRef = ref(db, 'EnergyMonitor/Live');
+    const mergePreds = () => ({ ...livePredsRef.current, ...forecastPredsRef.current });
 
-    const unsubscribe = onValue(dataRef, (snapshot) => {
+    const patchLatestHistoryPreds = (preds) => {
+      setHistory((prev) => {
+        if (!prev.length) return prev;
+        const last = prev[prev.length - 1];
+        return [
+          ...prev.slice(0, -1),
+          {
+            ...last,
+            powerPred: preds.power ?? null,
+            voltagePred: preds.voltage ?? null,
+            currentPred: preds.current ?? null,
+            energyPred: preds.energy ?? null,
+            pfPred: preds.pf ?? null,
+            frequencyPred: preds.frequency ?? null,
+          },
+        ];
+      });
+    };
+
+    const dataRef = ref(db, 'EnergyMonitor/Live');
+    const forecastRef = ref(db, 'EnergyMonitor/DigitalTwin_Forecast');
+
+    const unsubscribeLive = onValue(dataRef, (snapshot) => {
       const val = snapshot.val();
-      console.log("Firebase snapshot received:", val);
+      console.log("Firebase EnergyMonitor/Live:", val);
       if (val) {
-        setData(val);
+        livePredsRef.current = parsePredictionsFromSnapshot(val);
+        const preds = mergePreds();
+        setPredictions(preds);
+        setData({
+          voltage: Number(val.voltage) || 0,
+          current: Number(val.current) || 0,
+          power: Number(val.power) || 0,
+          energy: Number(val.energy) || 0,
+          pf: Number(val.pf) || 0,
+          frequency: Number(val.frequency) || 0,
+        });
+
+        latestLiveRef.current = {
+          voltage: Number(val.voltage) || 0,
+          current: Number(val.current) || 0,
+          power: Number(val.power) || 0,
+          energy: Number(val.energy) || 0,
+          pf: Number(val.pf) || 0,
+          frequency: Number(val.frequency) || 0,
+        };
+
         const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-        // Record history for all metrics simultaneously
-        setHistory(prev => [...prev.slice(-30), {
-          time: timeStr,
-          power: val.power || 0,
-          voltage: val.voltage || 0,
-          current: val.current || 0,
-          energy: val.energy || 0,
-          pf: val.pf || 0,
-          frequency: val.frequency || 0
-        }]);
+        setHistory((prev) => [
+          ...prev.slice(-30),
+          {
+            time: timeStr,
+            power: Number(val.power) || 0,
+            voltage: Number(val.voltage) || 0,
+            current: Number(val.current) || 0,
+            energy: Number(val.energy) || 0,
+            pf: Number(val.pf) || 0,
+            frequency: Number(val.frequency) || 0,
+            powerPred: preds.power ?? null,
+            voltagePred: preds.voltage ?? null,
+            currentPred: preds.current ?? null,
+            energyPred: preds.energy ?? null,
+            pfPred: preds.pf ?? null,
+            frequencyPred: preds.frequency ?? null,
+          },
+        ]);
 
-        setMetricHistory(prev => ({
-          voltage: [...prev.voltage.slice(-4), { time: timeStr, value: val.voltage || 0 }],
-          current: [...prev.current.slice(-4), { time: timeStr, value: val.current || 0 }],
-          power: [...prev.power.slice(-4), { time: timeStr, value: val.power || 0 }],
-          energy: [...prev.energy.slice(-4), { time: timeStr, value: val.energy || 0 }],
-          pf: [...(prev.pf || []).slice(-4), { time: timeStr, value: val.pf || 0 }],
-          frequency: [...(prev.frequency || []).slice(-4), { time: timeStr, value: val.frequency || 0 }]
+        setMetricHistory((prev) => ({
+          voltage: [...prev.voltage.slice(-4), { time: timeStr, value: Number(val.voltage) || 0 }],
+          current: [...prev.current.slice(-4), { time: timeStr, value: Number(val.current) || 0 }],
+          power: [...prev.power.slice(-4), { time: timeStr, value: Number(val.power) || 0 }],
+          energy: [...prev.energy.slice(-4), { time: timeStr, value: Number(val.energy) || 0 }],
+          pf: [...(prev.pf || []).slice(-4), { time: timeStr, value: Number(val.pf) || 0 }],
+          frequency: [...(prev.frequency || []).slice(-4), { time: timeStr, value: Number(val.frequency) || 0 }],
         }));
       }
     }, (error) => {
-      console.error("Firebase subscription error:", error);
+      console.error("Firebase EnergyMonitor/Live error:", error);
+    });
+
+    const unsubscribeForecast = onValue(forecastRef, (snapshot) => {
+      const val = snapshot.val();
+      console.log("Firebase DigitalTwin_Forecast:", val);
+
+      const v = val || {};
+      const live = latestLiveRef.current;
+
+      const actual_P = v.actual_P != null ? Number(v.actual_P) : live.power;
+      const next_P = Number(v.next_P) || 0;
+      const actual_V = v.actual_V != null ? Number(v.actual_V) : live.voltage;
+      const next_V = Number(v.next_V) || 0;
+      const actual_I = v.actual_I != null ? Number(v.actual_I) : live.current;
+      const next_I = Number(v.next_I) || 0;
+      const actual_F = v.actual_F != null ? Number(v.actual_F) : live.frequency;
+      const next_F = Number(v.next_F) || 0;
+      const actual_PF = v.actual_PF != null ? Number(v.actual_PF) : live.pf;
+      const next_PF = Number(v.next_PF) || 0;
+      const actual_energy = v.actual_energy != null ? Number(v.actual_energy) : live.energy;
+      const next_energy = Number(v.next_energy) || 0;
+
+      setDtForecast({ actual_P, next_P, actual_V, next_V, actual_I, next_I, actual_F, next_F, actual_PF, next_PF, actual_energy, next_energy });
+
+      const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      setDtHistory(prev => [...prev.slice(-30), {
+        time: timeStr,
+        actual_P, next_P,
+        actual_V, next_V,
+        actual_I, next_I,
+        actual_F, next_F,
+        actual_PF, next_PF,
+        actual_energy, next_energy
+      }]);
+
+      forecastPredsRef.current = parseDigitalTwinForecast(val || {});
+      const preds = mergePreds();
+      setPredictions(preds);
+      patchLatestHistoryPreds(preds);
+    }, (error) => {
+      console.error("Firebase DigitalTwin_Forecast error:", error);
     });
 
     // Add a subtle glow pulse to the background periodically
@@ -143,7 +358,8 @@ const App = () => {
 
     return () => {
       clearInterval(interval);
-      unsubscribe(); // cleanup
+      unsubscribeLive();
+      unsubscribeForecast();
       window.removeEventListener('mousemove', handleMouseMove);
       observer.disconnect();
     };
@@ -165,6 +381,57 @@ const App = () => {
       default: return '#60a5fa';
     }
   };
+
+  /** Dynamic Y axis for power, current, energy. Fixed for voltage, frequency, pf. */
+  const chartYDomain = useMemo(() => {
+    if (['voltage', 'frequency', 'pf'].includes(activeChartMetric)) {
+      switch (activeChartMetric) {
+        case 'voltage': return [200, 260];
+        case 'frequency': return [48, 52];
+        case 'pf': return [0, 1];
+        default: return [0, 100];
+      }
+    }
+
+    // Dynamic calculation for power, current, energy
+    const k = activeChartMetric;
+    const actualKey = k === 'power' ? 'actual_P' :
+      k === 'voltage' ? 'actual_V' :
+        k === 'current' ? 'actual_I' :
+          k === 'frequency' ? 'actual_F' :
+            k === 'pf' ? 'actual_PF' : 'actual_energy';
+    const predKeyName = k === 'power' ? 'next_P' :
+      k === 'voltage' ? 'next_V' :
+        k === 'current' ? 'next_I' :
+          k === 'frequency' ? 'next_F' :
+            k === 'pf' ? 'next_PF' : 'next_energy';
+    let min = Infinity;
+    let max = -Infinity;
+
+    dtHistory.forEach((row) => {
+      const a = Number(row[actualKey]);
+      if (Number.isFinite(a)) {
+        min = Math.min(min, a);
+        max = Math.max(max, a);
+      }
+      const p = row[predKeyName];
+      if (p != null && Number.isFinite(Number(p))) {
+        const pn = Number(p);
+        min = Math.min(min, pn);
+        max = Math.max(max, pn);
+      }
+    });
+    if (!Number.isFinite(min) || !Number.isFinite(max)) return [0, 1];
+    if (min === max) {
+      const pad = Math.abs(min) * 0.05 + 0.01;
+      return [min - pad, max + pad];
+    }
+    const pad = (max - min) * 0.08;
+    return [min - pad, max + pad];
+  }, [dtHistory, activeChartMetric]);
+
+  const predKey = `${activeChartMetric}Pred`;
+  const gradientId = `colorMetricActual-${activeChartMetric}`;
 
   return (
     <div className={`min-h-screen font-sans flex flex-col relative overflow-x-hidden transition-colors duration-500 ${theme.bgApp}`}>
@@ -290,20 +557,59 @@ const App = () => {
                   </span>
                 </div>
 
-                {/* Expandable History Section */}
-                <div className={`transition-all duration-500 ease-in-out relative z-10 overflow-hidden ${activeBlock === item.id ? 'max-h-40 mt-6 opacity-100' : 'max-h-0 opacity-0'}`}>
+                {/* Expandable: predicted value (prominent) + recent history */}
+                <div className={`transition-all duration-500 ease-in-out relative z-10 overflow-hidden ${activeBlock === item.id ? 'max-h-72 mt-6 opacity-100' : 'max-h-0 opacity-0'}`}>
                   <div className={`border-t ${theme.borderMuted} pt-4`}>
-                    <p className={`text-[10px] uppercase tracking-widest mb-2 font-bold ${theme.textMuted}`}>Recent History</p>
-                    <div className="space-y-1">
-                      {metricHistory[item.id]?.map((hist, i) => (
-                        <div key={i} className={`flex justify-between text-xs items-center p-1 rounded ${theme.bgHover} transition-colors`}>
-                          <span className={`font-mono text-[10px] ${theme.textMuted}`}>{hist.time}</span>
-                          <span className={`font-semibold ${theme.textStrong}`}>{hist.value} <span className="text-[10px] opacity-70">{item.unit}</span></span>
-                        </div>
-                      ))}
-                      {(!metricHistory[item.id] || metricHistory[item.id].length === 0) && (
-                        <div className={`text-xs italic ${theme.textMuted}`}>Waiting for data...</div>
-                      )}
+                    <p className={`text-[10px] uppercase tracking-widest mb-2 font-bold ${theme.textMuted}`}>
+                      {item.id === 'power' ? 'Predicted load' : 'Prediction'}
+                    </p>
+                    <div className={`rounded-lg px-3 py-2 mb-4 ${isDarkMode ? 'bg-white/5' : 'bg-slate-100/80'}`}>
+                      {(() => {
+                        const { pred, actual } = getForecastData(item.id);
+                        if (pred != null && Number.isFinite(pred)) {
+                          return (
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-baseline">
+                                <span className={`text-2xl sm:text-3xl font-bold font-serif tracking-tight ${theme.textStrong}`}>
+                                  {pred}
+                                </span>
+                                <span className={`text-sm font-semibold tracking-widest ${item.text} opacity-90 ml-1`}>{item.unit}</span>
+                              </div>
+                              <div>
+                                {pred > actual ? (
+                                  <span className="px-2 py-1 rounded-md text-[9px] font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Rising</span>
+                                ) : pred < actual ? (
+                                  <span className="px-2 py-1 rounded-md text-[9px] font-bold uppercase tracking-wider bg-orange-500/20 text-orange-400 border border-orange-500/30">Falling</span>
+                                ) : (
+                                  <span className="px-2 py-1 rounded-md text-[9px] font-bold uppercase tracking-wider bg-blue-500/20 text-blue-400 border border-blue-500/30">Stable</span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        } else {
+                          return (
+                            <p className={`text-sm italic ${theme.textMuted}`}>
+                              {item.id === 'power'
+                                ? 'No predicted load yet'
+                                : 'No prediction in Firebase payload yet'}
+                            </p>
+                          );
+                        }
+                      })()}
+                    </div>
+                    <div className={`border-t ${theme.borderMuted} pt-3`}>
+                      <p className={`text-[10px] uppercase tracking-widest mb-2 font-bold ${theme.textMuted}`}>Recent History</p>
+                      <div className="space-y-1">
+                        {metricHistory[item.id]?.map((hist, i) => (
+                          <div key={i} className={`flex justify-between text-xs items-center p-1 rounded ${theme.bgHover} transition-colors`}>
+                            <span className={`font-mono text-[10px] ${theme.textMuted}`}>{hist.time}</span>
+                            <span className={`font-semibold ${theme.textStrong}`}>{hist.value} <span className="text-[10px] opacity-70">{item.unit}</span></span>
+                          </div>
+                        ))}
+                        {(!metricHistory[item.id] || metricHistory[item.id].length === 0) && (
+                          <div className={`text-xs italic ${theme.textMuted}`}>Waiting for data...</div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -366,16 +672,22 @@ const App = () => {
 
             <div className="h-[320px] w-full mt-4">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={history} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <ComposedChart data={dtHistory} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <defs>
-                    <linearGradient id="colorMetric" x1="0" y1="0" x2="0" y2="1">
+                    <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor={getChartColor(activeChartMetric)} stopOpacity={0.6} />
                       <stop offset="95%" stopColor={getChartColor(activeChartMetric)} stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDarkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)"} />
                   <XAxis dataKey="time" fontSize={11} tickMargin={12} stroke={isDarkMode ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.3)"} tick={{ fill: isDarkMode ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)' }} />
-                  <YAxis fontSize={11} stroke={isDarkMode ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.3)"} tick={{ fill: isDarkMode ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)' }} domain={['auto', 'auto']} />
+                  <YAxis
+                    fontSize={11}
+                    stroke={isDarkMode ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.3)"}
+                    tick={{ fill: isDarkMode ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)' }}
+                    domain={chartYDomain}
+                    allowDataOverflow
+                  />
                   <Tooltip
                     contentStyle={{
                       backgroundColor: isDarkMode ? 'rgba(15, 23, 42, 0.8)' : 'rgba(255, 255, 255, 0.9)',
@@ -386,25 +698,54 @@ const App = () => {
                       backdropFilter: 'blur(8px)',
                       boxShadow: '0 4px 15px rgba(0,0,0,0.1)'
                     }}
-                    itemStyle={{ color: getChartColor(activeChartMetric), fontWeight: 'bold' }}
+                  />
+                  <Legend
+                    wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
+                    formatter={(value, entry) => <span style={{ color: entry.color }}>{value}</span>}
                   />
                   <Area
+                    name={`Actual ${activeChartMetric.charAt(0).toUpperCase() + activeChartMetric.slice(1)}`}
                     type="monotone"
-                    dataKey={activeChartMetric}
+                    dataKey={
+                      activeChartMetric === 'power' ? 'actual_P' :
+                        activeChartMetric === 'voltage' ? 'actual_V' :
+                          activeChartMetric === 'current' ? 'actual_I' :
+                            activeChartMetric === 'frequency' ? 'actual_F' :
+                              activeChartMetric === 'pf' ? 'actual_PF' : 'actual_energy'
+                    }
                     stroke={getChartColor(activeChartMetric)}
                     strokeWidth={3}
                     fillOpacity={1}
-                    fill="url(#colorMetric)"
+                    fill={`url(#${gradientId})`}
                     animationDuration={300}
                     activeDot={{ r: 6, fill: getChartColor(activeChartMetric), stroke: isDarkMode ? '#fff' : '#020617', strokeWidth: 2 }}
                   />
-                </AreaChart>
+                  <Line
+                    name="Predicted"
+                    type="monotone"
+                    dataKey={
+                      activeChartMetric === 'power' ? 'next_P' :
+                        activeChartMetric === 'voltage' ? 'next_V' :
+                          activeChartMetric === 'current' ? 'next_I' :
+                            activeChartMetric === 'frequency' ? 'next_F' :
+                              activeChartMetric === 'pf' ? 'next_PF' : 'next_energy'
+                    }
+                    stroke={'#ff1493'}
+                    strokeWidth={2}
+                    strokeDasharray={"5 5"}
+                    dot={false}
+                    connectNulls
+                    isAnimationActive={false}
+                  />
+                </ComposedChart>
               </ResponsiveContainer>
             </div>
           </div>
         </FadeInSection>
 
       </div>
+
+      {/* (Modal removed as requested) */}
 
       {/* Settings Modal */}
       {isSettingsOpen && (
